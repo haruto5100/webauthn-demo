@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>WebAuthn Demo (Week 9)</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>ゼロトラスト IAP 認証ゲートウェイ</h1>
+        
+        <div class="card">
+            <h2>1. デバイスの登録</h2>
+            <p>初回のみ、このデバイスの鍵（パスキー）をサーバーに登録します。</p>
+            <button onclick="registerUser()">登録する</button>
+        </div>
+
+        <div class="card">
+            <h2>2. ログイン（署名検証）</h2>
+            <p>登録した鍵を使って、サーバーの挑戦状に署名してログインします。</p>
+            <button onclick="loginUser()">ログインする</button>
+        </div>
+
+        <div id="result" style="margin-top: 20px; padding: 10px; border-radius: 5px; display: none;"></div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

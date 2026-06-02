@@ -1,0 +1,31 @@
+body { 
+    font-family: sans-serif; 
+    text-align: center; 
+    padding: 50px; 
+}
+
+button { 
+    padding: 15px 30px; 
+    font-size: 18px; 
+    cursor: pointer; 
+    background-color: #007bff; 
+    color: white; 
+    border: none; 
+    border-radius: 5px; 
+    transition: background-color 0.2s;
+}
+
+button:hover { 
+    background-color: #0056b3; 
+}
+
+#result { 
+    margin-top: 20px; 
+    font-weight: bold; 
+    word-break: break-all; 
+    text-align: left; 
+    background: #f4f4f4; 
+    padding: 15px; 
+    border-radius: 5px; 
+    display: none; /* 初期状態では非表示 */
+}
