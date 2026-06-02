@@ -108,11 +108,11 @@ def verify_login(response: dict):
     try:
         # 署名の検証
         verification = verify_authentication_response(
-            credential=response,
-            expected_challenge=mock_db["current_challenge"],
+            credential=response, # ブラウザから送られてきた「署名（ハンコ）」
+            expected_challenge=mock_db["current_challenge"], # サーバーが出した乱数
             expected_origin=EXPECTED_ORIGIN,
             expected_rp_id=RP_ID,
-            credential_public_key=stored_cred["public_key"],
+            credential_public_key=stored_cred["public_key"], # 台帳に登録されている「公開鍵（印鑑証明）」
             credential_current_sign_count=stored_cred["sign_count"],
         )
         
