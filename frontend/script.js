@@ -110,9 +110,16 @@ async function loginUser() {
         });
 
         const result = await verifyRes.json();
-        if (verifyRes.ok) showMessage(result.message);
-        else showMessage(result.detail, true);
-
+        if (verifyRes.ok) {
+            showMessage(result.message);
+            // ログイン成功のメッセージを1.5秒見せた後、機密ページへ遷移
+            setTimeout(() => {
+                window.location.href = 'secure/secret.html';
+            }, 1500);
+        } else {
+            showMessage(result.detail, true);
+        }
+        
     } catch (error) {
         console.error(error);
         showMessage(error.message || "ログイン検証中にエラーが発生しました", true);
