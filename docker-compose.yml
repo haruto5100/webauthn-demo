@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  # ① FastAPIのコンテナ（奥の審査員）
+  backend:
+    build: ./backend
+    # ★注目: ここにあえて `ports` を書いていません。
+    # これにより、PCの外からは直接FastAPI（8000番）にアクセスできず、
+    # 同じDockerネットワークにいるNginxからしかアクセスできない「完全な裏方」になります。
+
+  # ② Nginxのコンテナ（手前の関所）
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "8080:80" # ブラウザからは http://localhost:8080 でアクセスするようになります
+    volumes:
+      # 作成した設定ファイルをコンテナに読み込ませる
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      # フロントエンドのHTML群をNginxに直接配らせる
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - backend # backendが立ち上がってからnginxを起動する
