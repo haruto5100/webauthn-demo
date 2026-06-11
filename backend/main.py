@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Cookie, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from webauthn import (
@@ -16,7 +16,7 @@ app = FastAPI()
 # フロントエンドからの通信を許可する設定（CORS）
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5500", "http://127.0.0.1:5500"], # フロントエンドのURLに合わせて変更
+    allow_origins=["http://localhost:8080","http://localhost:5500", "http://127.0.0.1:5500"], # フロントエンドのURLに合わせて変更
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -25,7 +25,7 @@ app.add_middleware(
 # サーバーの基本設定
 RP_ID = "localhost"
 RP_NAME = "Demo App"
-EXPECTED_ORIGIN = "http://localhost:5500" # フロントエンドのURL
+EXPECTED_ORIGIN = "http://localhost:8080" # フロントエンドのURL
 
 # 簡易データベース（実運用ではMySQL等を使用）
 mock_db = {
@@ -51,11 +51,11 @@ def get_register_options():
     return options_to_json(options)
 
 @app.post("/api/register/verify")
-def verify_register(response: dict):
+def verify_register(credential_data: dict):
     """2. フロントエンドから送られてきた公開鍵を検証・保存する"""
     try:
         verification = verify_registration_response(
-            credential=response,
+            credential=credential_data,
             expected_challenge=mock_db["current_challenge"],
             expected_origin=EXPECTED_ORIGIN,
             expected_rp_id=RP_ID,
@@ -92,14 +92,14 @@ def get_login_options():
     return options_to_json(options)
 
 @app.post("/api/login/verify")
-def verify_login(response: dict):
-    """4. 送られてきた署名を、保存してある公開鍵で検証する"""
+def verify_login(credential_data: dict, response: Response):
+    """4. 送られてきた署名を検証し、成功すればCookieを発行する"""
     if not mock_db["credentials"]:
         raise HTTPException(status_code=400, detail="ユーザーが登録されていません")
 
     # DBから該当の公開鍵データを探す
     stored_cred = next(
-        (c for c in mock_db["credentials"] if c["id"] == base64url_to_bytes(response.get("id"))),
+        (c for c in mock_db["credentials"] if c["id"] == base64url_to_bytes(credential_data.get("id"))),
         None
     )
     if not stored_cred:
@@ -108,7 +108,7 @@ def verify_login(response: dict):
     try:
         # 署名の検証
         verification = verify_authentication_response(
-            credential=response, # ブラウザから送られてきた「署名（ハンコ）」
+            credential=credential_data, # ブラウザから送られてきた「署名（ハンコ）」
             expected_challenge=mock_db["current_challenge"], # サーバーが出した乱数
             expected_origin=EXPECTED_ORIGIN,
             expected_rp_id=RP_ID,
@@ -119,6 +119,34 @@ def verify_login(response: dict):
         # 次回以降の検証のために、署名カウンターを更新（クローン攻撃対策）
         stored_cred["sign_count"] = verification.new_sign_count
         
-        return {"status": "success", "message": "ログイン成功"}
+        # 【追加】検証に成功したら、Cookie（通行証）を発行する
+        response.set_cookie(
+            key="session_token",
+            value="valid_user_pass", # 今回は簡略化のため固定文字列
+            httponly=True,           # JavaScriptからのアクセスを禁止（XSS対策）
+            samesite="lax"           # CSRF対策
+        )
+        
+        return {"status": "success", "message": "ログイン成功！通行証を発行しました。"}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# ==========================================
+# 【フェーズ3】Nginxからのアクセス審査 (Authorization)
+# ==========================================
+
+@app.get("/api/verify_session")
+def verify_session(session_token: str | None = Cookie(default=None)):
+    """
+    5. Nginxが「この通信を通していいか？」を問い合わせてくる専用窓口
+    """
+    # Cookieの中に正しい通行証（今回は "valid_user_pass"）があるかチェック
+    if session_token == "valid_user_pass":
+        # 問題なければ 200 OK を返す（Nginxが通信を許可する）
+        return Response(status_code=status.HTTP_200_OK)
+    
+    # 通行証がない、または不正な場合は 401 Unauthorized を返す（Nginxが通信を遮断する）
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="認証されていません。通行証がありません。"
+    )
