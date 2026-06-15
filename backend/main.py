@@ -119,10 +119,10 @@ def verify_login(credential_data: dict, response: Response):
         # 次回以降の検証のために、署名カウンターを更新（クローン攻撃対策）
         stored_cred["sign_count"] = verification.new_sign_count
         
-        # 【追加】検証に成功したら、Cookie（通行証）を発行する
+        # 検証に成功したら、Cookie（通行証）を発行する
         response.set_cookie(
             key="session_token",
-            value="valid_user_pass", # 今回は簡略化のため固定文字列
+            value="valid_user_pass", # 通行証
             httponly=True,           # JavaScriptからのアクセスを禁止（XSS対策）
             samesite="lax"           # CSRF対策
         )
@@ -132,13 +132,13 @@ def verify_login(credential_data: dict, response: Response):
         raise HTTPException(status_code=400, detail=str(e))
 
 # ==========================================
-# 【フェーズ3】Nginxからのアクセス審査 (Authorization)
+# 【フェーズ3】Nginxからのアクセス審査
 # ==========================================
 
 @app.get("/api/verify_session")
 def verify_session(session_token: str | None = Cookie(default=None)):
     """
-    5. Nginxが「この通信を通していいか？」を問い合わせてくる専用窓口
+    5. Nginxが問い合わせをする窓口
     """
     # Cookieの中に正しい通行証（今回は "valid_user_pass"）があるかチェック
     if session_token == "valid_user_pass":
