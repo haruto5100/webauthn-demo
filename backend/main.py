@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Cookie, Response, status
+from fastapi import FastAPI, HTTPException, Cookie, Response, status, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from webauthn import (
@@ -10,6 +10,7 @@ from webauthn import (
     base64url_to_bytes,
 )
 from webauthn.helpers.structs import PublicKeyCredentialDescriptor
+from user_agents import parse  # ★User-Agent解析用ライブラリを追加
 
 app = FastAPI()
 
@@ -136,17 +137,60 @@ def verify_login(credential_data: dict, response: Response):
 # ==========================================
 
 @app.get("/api/verify_session")
-def verify_session(session_token: str | None = Cookie(default=None)):
+def verify_session(
+    session_token: str | None = Cookie(default=None),
+    user_agent: str | None = Header(default=None) # ★Nginxから転送されたブラウザ情報を受け取る
+):
     """
-    5. Nginxが問い合わせをする窓口
+    5. Nginxが問い合わせをする窓口 ＋ デバイスポスチャ評価
     """
-    # Cookieの中に正しい通行証（今回は "valid_user_pass"）があるかチェック
-    if session_token == "valid_user_pass":
-        # 問題なければ 200 OK を返す（Nginxが通信を許可する）
-        return Response(status_code=status.HTTP_200_OK)
+    # ----------------------------------------------------
+    # 審査①：本人確認（Cookieのチェック）
+    # ----------------------------------------------------
+    if session_token != "valid_user_pass":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="認証されていません。通行証がありません。"
+        )
+        
+    # ----------------------------------------------------
+    # 審査②：デバイスポスチャ評価（OS・ブラウザのチェック）
+    # ----------------------------------------------------
+    if not user_agent:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="端末情報が取得できません。"
+        )
+
+    # User-Agentの文字列を解析
+    ua = parse(user_agent)
     
-    # 通行証がない、または不正な場合は 401 Unauthorized を返す（Nginxが通信を遮断する）
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="認証されていません。通行証がありません。"
-    )
+    # バージョン情報（タプル型）からメジャーバージョン（最初の数字）を安全に取り出す
+    os_major_ver = ua.os.version[0] if len(ua.os.version) > 0 else 0
+    browser_major_ver = ua.browser.version[0] if len(ua.browser.version) > 0 else 0
+
+    # 【ルールA】Windowsの場合、Windows 10以上を要求する
+    if ua.os.family == "Windows" and os_major_ver < 10:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Windows {os_major_ver}からのアクセスは禁止されています。Windows 10以上を使用してください。"
+        )
+
+    # 【ルールB】Chromeの場合、バージョン115以上を要求する
+    if ua.browser.family == "Chrome" and browser_major_ver < 115:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Chromeのバージョンが古すぎます(v{browser_major_ver})。最新版にアップデートしてください。"
+        )
+    
+    # 【ルールC】Safariの場合、許可しない（例：企業ポリシーでSafariを禁止している場合）
+    if ua.browser.family == "Safari":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Safariブラウザからのアクセスは禁止されています。別のブラウザを使用してください。"
+        )
+
+    # ----------------------------------------------------
+    # 全ての審査（本人確認 ＋ 端末の健全性）をクリア！
+    # ----------------------------------------------------
+    return Response(status_code=status.HTTP_200_OK)
